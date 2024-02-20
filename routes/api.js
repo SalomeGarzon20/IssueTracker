@@ -1,7 +1,7 @@
 'use strict';
 
 const mongoose = require("mongoose");
-const { ObjectId } = mongoose.Types;
+const ObjectId = mongoose.Types.ObjectId;
 const IssueModel = require("../models").Issue;
 const ProjectModel = require("../models").Project;
 
@@ -103,6 +103,7 @@ module.exports = function (app) {
         });
     })
 
+    /*
     .put(function (req, res) {
       let project = req.params.project;
       const { 
@@ -155,7 +156,60 @@ module.exports = function (app) {
           res.status(500).send("Internal Server Error");
         });
     })
-
+*/
+    
+    .put(function (req, res) {
+      let project = req.params.project;
+      const { 
+        _id,
+        issue_title,
+        issue_text,
+        created_by,
+        assigned_to,
+        status_text,
+        open,
+      } = req.body;
+      if (!_id) {
+        res.json({ error: "missing _id" });
+        return;
+      }
+      if (
+        !issue_title &&
+        !issue_text &&
+        !created_by &&
+        !assigned_to &&
+        !status_text &&
+        !open
+      ) {
+        res.json({ error: "no update field(s) sent", _id: _id });
+        return;
+      }
+      ProjectModel.findOne({ name: project })
+        .then(projectdata => {
+          if (!projectdata) {
+            throw new Error("could not update");
+          }
+          const issueData = projectdata.issues.id(new ObjectId(_id));
+          if (!issueData) {
+            throw new Error("could not update");
+          } 
+          issueData.issue_title = issue_title || issueData.issue_title; 
+          issueData.issue_text = issue_text || issueData.issue_text; 
+          issueData.created_by = created_by || issueData.created_by; 
+          issueData.assigned_to= assigned_to || issueData.assigned_to; 
+          issueData.status_text = status_text || issueData.status_text; 
+          issueData.updated_on = new Date();
+          issueData.open = open;
+          return projectdata.save(); 
+        })
+        .then(data => {
+          res.json({ result: "successfully updated", _id: _id });
+        })
+        .catch(err => {
+          console.error(err);
+          res.status(500).send("Internal Server Error");
+        });
+    })
 
     .delete(function (req, res) {
       let projectName = req.params.project; 
