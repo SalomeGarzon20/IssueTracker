@@ -347,7 +347,7 @@ module.exports = function (app) {
           }
         });
       })
-  
+      
       .delete(function (req, res) {
         let projectName = req.params.project; 
         const { _id } = req.body;
@@ -356,28 +356,28 @@ module.exports = function (app) {
           return;
         }
         
-        ProjectModel.findOne({ name: projectName }, (err, projectdata) => {
-          if (!projectdata || err){
-            res.send({ erro: "could not delete", _id: _id});
-          } else {
-            const issueData = projectdata.issues.id(_id);
-            if (!issueData) {
-              res.send({ error: "could not delete", _id: _id});
-              return;
+        ProjectModel.findOne({ name: projectName })
+          .then(projectdata => {
+            if (!projectdata) {
+              throw new Error("could not delete");
             }
-            issueData.remove();
-  
-            projectdata.save((err, data) => {
-              if (err || !data) {
-                res.json({ error: "could not delete", _id: issueData._id});
-              } else {
-                res.json({ result: "successfully delete", _id: issueData._id});
-              }
-            });
-          }
-        });
+            const issueData = projectdata.issues.id(_id); 
+            if (!issueData) {
+              throw new Error("could not delete");
+            }
+            issueData.remove(); 
+            
+            return projectdata.save();
+          })
+          .then(data => {
+            res.json({ result: "successfully deleted", _id: _id });
+          })
+          .catch(err => {
+            console.error(err);
+            res.json({ error: "could not delete", _id: _id });
+          });
       });
-  
+      
   /*
       .delete(function (req, res) {
         let project = req.params.project; 
