@@ -1,6 +1,7 @@
 'use strict';
 
 const mongoose = require("mongoose");
+const { ObjectId } = mongoose.Types;
 const IssueModel = require("../models").Issue;
 const ProjectModel = require("../models").Project;
 
@@ -155,7 +156,7 @@ module.exports = function (app) {
         });
     })
 
-    
+
     .delete(function (req, res) {
       let projectName = req.params.project; 
       const { _id } = req.body;
