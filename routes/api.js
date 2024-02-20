@@ -1,7 +1,6 @@
 'use strict';
 
 const mongoose = require("mongoose");
-const ObjectId = mongoose.Types.ObjectId;
 const IssueModel = require("../models").Issue;
 const ProjectModel = require("../models").Project;
 
@@ -46,16 +45,13 @@ module.exports = function (app) {
         status_text != undefined
         ? { $match: { "issues.status_text": status_text } } 
         : { $match: {}},
-      ]).then((data) => {
+      ]).exec((err, data) => {
         if (!data) { 
           res.json([]);
         } else {
           let mappedData = data.map((item) => item.issues); 
           res.json(mappedData);
         }
-      }).catch((err) => {
-        console.error(err);
-        res.status(500).send("Internal Server Error");
       });
     })
 
@@ -83,27 +79,32 @@ module.exports = function (app) {
         status_text: status_text || "",
       });
 
-      ProjectModel.findOne({ name: project })
-        .then(projectdata => {
-          if (!projectdata) {
-            const newProject = new ProjectModel({ name: project });
-            newProject.issues.push(newIssue);
-            return newProject.save();
-          } else {
-            projectdata.issues.push(newIssue);
-            return projectdata.save();
-          }
-        })
-        .then(data => {
-          res.json(newIssue);
-        })
-        .catch(err => {
-          console.error(err);
-          res.status(500).send("Internal Server Error");
-        });
+      ProjectModel.findOne({ name: project }, (err, projectdata) => {
+        if (!projectdata) {
+          const newProject = new ProjectModel({ name: project });
+          newProject.issues.push(newIssue);
+          newProject.save((err, data) => {
+            if (err || !data) {
+              res.send("There was an error saving in post");
+            } else {
+              res.json(newIssue);
+            }
+          });
+          
+        } else {
+          projectdata.issues.push(newIssue);
+          projectdata.save((err, data) => {
+            if (err || !data){
+              res.send("There was an error saving in post");
+            }else {
+              res.json(newIssue);
+            }
+          });
+        }
+      });
     })
 
-    /*
+    
     .put(function (req, res) {
       let project = req.params.project;
       const { 
@@ -130,14 +131,14 @@ module.exports = function (app) {
         res.json({ error: "no update field(s) sent", _id: _id });
         return;
       }
-      ProjectModel.findOne({ name: project }) // Cambio aquí
-        .then(projectdata => {
-          if (!projectdata) {
-            throw new Error("could not update"); // Cambio aquí
-          }
+      ProjectModel.findOne({ name: project }, (err, projectdata) => {
+        if(err || !projectdata) {
+          res.json({ result: "could not update", _id: _id });
+        } else {
           const issueData = projectdata.issues.id(_id);
           if (!issueData) {
-            throw new Error("could not update"); // Cambio aquí
+            res.json({ error: "could not update", _id: _id });
+            return;
           } 
           issueData.issue_title = issue_title || issueData.issue_title; 
           issueData.issue_text = issue_text || issueData.issue_text; 
@@ -146,61 +147,14 @@ module.exports = function (app) {
           issueData.status_text = status_text || issueData.status_text; 
           issueData.updated_on = new Date();
           issueData.open = open;
-          return projectdata.save(); 
-        })
-        .then(data => {
-          res.json({ result: "successfully updated", _id: _id });
-        })
-        .catch(err => {
-          console.error(err);
-          res.status(500).send("Internal Server Error");
-        });
-    })
-*/
-    .put(function (req, res) {
-      let project = req.params.project;
-      const { 
-        _id,
-        issue_title,
-        issue_text,
-        created_by,
-        assigned_to,
-        status_text,
-        open,
-      } = req.body;
-
-      if (!_id) {
-        res.json({ error: "missing _id" });
-        return;
-      }
-
-      const updates = {};
-      if (issue_title) updates.issue_title = issue_title;
-      if (issue_text) updates.issue_text = issue_text;
-      if (created_by) updates.created_by = created_by;
-      if (assigned_to) updates.assigned_to = assigned_to;
-      if (status_text) updates.status_text = status_text;
-      if (typeof open === 'boolean') updates.open = open;
-      
-      if (Object.keys(updates).length === 0) {
-        res.json({ error: "no update field(s) sent", _id: _id });
-        return;
-      }
-
-      ProjectModel.findOneAndUpdate(
-        { name: project, "issues._id": _id },
-        { $set: { "issues.$": { ...updates, updated_on: new Date() } } },
-        { new: true }
-      )
-      .then(data => {
-        if (!data) {
-          throw new Error("could not update");
+          projectdata.save((err, data) => {
+            if (err || !data){
+              res.json({ error: "could not update", _id: _id });
+            } else {
+              res.json({ result: "successfully updated", _id: _id });
+            }
+          });
         }
-        res.json({ result: "successfully updated", _id: _id });
-      })
-      .catch(err => {
-        console.error(err);
-        res.status(500).send("Internal Server Error");
       });
     })
 
@@ -212,19 +166,27 @@ module.exports = function (app) {
         return;
       }
       
-      ProjectModel.findOneAndDelete({ name: projectName })
-        .then(deletedProject => {
-          if (!deletedProject) {
-            throw new Error("Project not found");
+      ProjectModel.findOne({ name: projectName }, (err, projectdata) => {
+        if (!projectdata || err){
+          res.send({ erro: "could not delete", _id: _id});
+        } else {
+          const issueData = projectdata.issues.id(_id);
+          if (!issueData) {
+            res.send({ error: "could not delete", _id: _id});
+            return;
           }
-          res.json({ result: "successfully deleted", _id: deletedProject._id });
-        })
-        .catch(err => {
-          console.error(err);
-          res.status(404).json({ error: err.message, _id: _id });        
-        });
+          issueData.remove();
+
+          projectdata.save((err, data) => {
+            if (err || !data) {
+              res.json({ error: "could not delete", _id: issueData._id});
+            } else {
+              res.json({ result: "successfully delete", _id: issueData._id});
+            }
+          });
+        }
+      });
     });
-    
 
 /*
     .delete(function (req, res) {
