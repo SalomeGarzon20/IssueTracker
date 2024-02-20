@@ -189,7 +189,7 @@ module.exports = function (app) {
           if (!projectdata) {
             throw new Error("could not update");
           }
-          const issueData = projectdata.issues.id(new ObjectId(_id));
+          const issueData = projectdata.issues.id(_id);
           if (!issueData) {
             throw new Error("could not update");
           } 
