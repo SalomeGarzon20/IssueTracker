@@ -157,7 +157,6 @@ module.exports = function (app) {
         });
     })
 */
-    
     .put(function (req, res) {
       let project = req.params.project;
       const { 
@@ -169,46 +168,40 @@ module.exports = function (app) {
         status_text,
         open,
       } = req.body;
+
       if (!_id) {
         res.json({ error: "missing _id" });
         return;
       }
-      if (
-        !issue_title &&
-        !issue_text &&
-        !created_by &&
-        !assigned_to &&
-        !status_text &&
-        !open
-      ) {
+
+      const updates = {};
+      if (issue_title) updates.issue_title = issue_title;
+      if (issue_text) updates.issue_text = issue_text;
+      if (created_by) updates.created_by = created_by;
+      if (assigned_to) updates.assigned_to = assigned_to;
+      if (status_text) updates.status_text = status_text;
+      if (typeof open === 'boolean') updates.open = open;
+      
+      if (Object.keys(updates).length === 0) {
         res.json({ error: "no update field(s) sent", _id: _id });
         return;
       }
-      ProjectModel.findOne({ name: project })
-        .then(projectdata => {
-          if (!projectdata) {
-            throw new Error("could not update");
-          }
-          const issueData = projectdata.issues.id(_id);
-          if (!issueData) {
-            throw new Error("could not update");
-          } 
-          issueData.issue_title = issue_title || issueData.issue_title; 
-          issueData.issue_text = issue_text || issueData.issue_text; 
-          issueData.created_by = created_by || issueData.created_by; 
-          issueData.assigned_to= assigned_to || issueData.assigned_to; 
-          issueData.status_text = status_text || issueData.status_text; 
-          issueData.updated_on = new Date();
-          issueData.open = open;
-          return projectdata.save(); 
-        })
-        .then(data => {
-          res.json({ result: "successfully updated", _id: _id });
-        })
-        .catch(err => {
-          console.error(err);
-          res.status(500).send("Internal Server Error");
-        });
+
+      ProjectModel.findOneAndUpdate(
+        { name: project, "issues._id": _id },
+        { $set: { "issues.$": { ...updates, updated_on: new Date() } } },
+        { new: true }
+      )
+      .then(data => {
+        if (!data) {
+          throw new Error("could not update");
+        }
+        res.json({ result: "successfully updated", _id: _id });
+      })
+      .catch(err => {
+        console.error(err);
+        res.status(500).send("Internal Server Error");
+      });
     })
 
     .delete(function (req, res) {
