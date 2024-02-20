@@ -1,13 +1,13 @@
 'use strict';
 
 const mongoose = require("mongoose");
-const ObjectId = mongoose.Types.ObjectId;
+const ObjectId = mongoose.Types.ObjectId; // Agrega esta línea
 const IssueModel = require("../models").Issue;
 const ProjectModel = require("../models").Project;
 
 module.exports = function (app) {
 
-  app.route("/api/issues/:project")
+  app.route('/api/issues/:project')
 
     .get(function (req, res) {
       let projectName = req.params.project;
@@ -103,7 +103,6 @@ module.exports = function (app) {
         });
     })
 
-    /*
     .put(function (req, res) {
       let project = req.params.project;
       const { 
@@ -146,7 +145,7 @@ module.exports = function (app) {
           issueData.status_text = status_text || issueData.status_text; 
           issueData.updated_on = new Date();
           issueData.open = open;
-          return projectdata.save(); 
+          return projectdata.save(); // Cambio aquí
         })
         .then(data => {
           res.json({ result: "successfully updated", _id: _id });
@@ -156,111 +155,10 @@ module.exports = function (app) {
           res.status(500).send("Internal Server Error");
         });
     })
-*/
-    .put(function (req, res) {
-      let project = req.params.project;
-      const { 
-        _id,
-        issue_title,
-        issue_text,
-        created_by,
-        assigned_to,
-        status_text,
-        open,
-      } = req.body;
 
-      if (!_id) {
-        res.json({ error: "missing _id" });
-        return;
-      }
-
-      const updates = {};
-      if (issue_title) updates.issue_title = issue_title;
-      if (issue_text) updates.issue_text = issue_text;
-      if (created_by) updates.created_by = created_by;
-      if (assigned_to) updates.assigned_to = assigned_to;
-      if (status_text) updates.status_text = status_text;
-      if (typeof open === 'boolean') updates.open = open;
-      
-      if (Object.keys(updates).length === 0) {
-        res.json({ error: "no update field(s) sent", _id: _id });
-        return;
-      }
-
-      ProjectModel.findOneAndUpdate(
-        { name: project, "issues._id": _id },
-        { $set: { "issues.$": { ...updates, updated_on: new Date() } } },
-        { new: true }
-      )
-      .then(data => {
-        if (!data) {
-          throw new Error("could not update");
-        }
-        res.json({ result: "successfully updated", _id: _id });
-      })
-      .catch(err => {
-        console.error(err);
-        res.status(500).send("Internal Server Error");
-      });
-    })
-
-    .delete(function (req, res) {
-      let projectName = req.params.project; 
-      const { _id } = req.body;
-      if (!_id) {
-        res.json({ error: "missing _id" }); 
-        return;
-      }
-      
-      ProjectModel.findOneAndDelete({ name: projectName })
-        .then(deletedProject => {
-          if (!deletedProject) {
-            throw new Error("Project not found");
-          }
-          res.json({ result: "successfully deleted", _id: deletedProject._id });
-        })
-        .catch(err => {
-          console.error(err);
-          res.status(404).json({ error: err.message, _id: _id });        
-        });
-    });
-    
-
-/*
     .delete(function (req, res) {
       let project = req.params.project; 
       const { _id } = req.body;
-      if (!_id) {
-        res.status(400).json({ error: "missing _id" }); 
-        return;
-      }
-      
-      ProjectModel.findOne({ name: project })
-        .then(projectdata => {
-          if (!projectdata) {
-            throw new Error("could not find project");
-          }
-          const issueData = projectdata.issues.id(_id); 
-          if (!issueData) {
-            throw new Error("could not find issue");
-          }
-          issueData.remove(); 
-          
-          return projectdata.save();
-        })
-        .then(data => {
-          res.json({ result: "successfully deleted", _id: _id });
-        })
-        .catch(err => {
-          console.error(err);
-          res.status(404).json({ error: err.message, _id: _id });        
-        });
-    });
-    */
-    /*
-    .delete(function (req, res) {
-      let project = req.params.project; 
-      const { _id } = req.params;
       if (!_id) {
         res.json({ error: "missing _id" }); 
         return;
@@ -284,8 +182,7 @@ module.exports = function (app) {
         })
         .catch(err => {
           console.error(err);
-          res.status(404).json({ error: err.message, _id: _id });        
+          res.json({ error: "could not delete", _id: _id });
         });
     });
-    */
-  }
+  }    
