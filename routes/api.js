@@ -46,17 +46,16 @@ module.exports = function (app) {
         status_text != undefined
         ? { $match: { "issues.status_text": status_text } } 
         : { $match: {}},
-      ]).then((data) => { // Cambio aquí
+      ]).then((data) => {
         if (!data) { 
           res.json([]);
         } else {
-          let mappedData = data.map((item) => item. issues); 
-          //res.json(data);
-          res.json (mappedData);
+          let mappedData = data.map((item) => item.issues); 
+          res.json(mappedData);
         }
-      }).catch((err) => { // Cambio aquí
-        console.error(err); // Agrega esto para ver si hay errores
-        res.status(500).send("Internal Server Error"); // Cambio aquí
+      }).catch((err) => {
+        console.error(err);
+        res.status(500).send("Internal Server Error");
       });
     })
 
@@ -99,19 +98,91 @@ module.exports = function (app) {
           res.json(newIssue);
         })
         .catch(err => {
-          console.error(err); // Agrega esto para ver si hay errores
-          res.status(500).send("Internal Server Error"); // Cambio aquí
+          console.error(err);
+          res.status(500).send("Internal Server Error");
         });
     })
 
     .put(function (req, res) {
       let project = req.params.project;
-
+      const { 
+        _id,
+        issue_title,
+        issue_text,
+        created_by,
+        assigned_to,
+        status_text,
+        open,
+      } = req.body;
+      if (!_id) {
+        res.json({ error: "missing _id" });
+        return;
+      }
+      if (
+        !issue_title &&
+        !issue_text &&
+        !created_by &&
+        !assigned_to &&
+        !status_text &&
+        !open
+      ) {
+        res.json({ error: "no update field(s) sent", _id: _id });
+        return;
+      }
+      ProjectModel.findOne({ name: project }) // Cambio aquí
+        .then(projectdata => {
+          if (!projectdata) {
+            throw new Error("could not update"); // Cambio aquí
+          }
+          const issueData = projectdata.issues.id(_id);
+          if (!issueData) {
+            throw new Error("could not update"); // Cambio aquí
+          } 
+          issueData.issue_title = issue_title || issueData.issue_title; 
+          issueData.issue_text = issue_text || issueData.issue_text; 
+          issueData.created_by = created_by || issueData.created_by; 
+          issueData.assigned_to= assigned_to || issueData.assigned_to; 
+          issueData.status_text = status_text || issueData.status_text; 
+          issueData.updated_on = new Date();
+          issueData.open = open;
+          return projectdata.save(); // Cambio aquí
+        })
+        .then(data => {
+          res.json({ result: "successfully updated", _id: _id });
+        })
+        .catch(err => {
+          console.error(err);
+          res.status(500).send("Internal Server Error");
+        });
     })
 
     .delete(function (req, res) {
-      let project = req.params.project;
-
+      let project = req.params.project; 
+      const { _id } = req.body;
+      if (!_id) {
+        res.json({ error: "missing _id" }); 
+        return;
+      }
+      
+      ProjectModel.findOne({ name: project })
+        .then(projectdata => {
+          if (!projectdata) {
+            throw new Error("could not delete");
+          }
+          const issueData = projectdata.issues.id(_id); 
+          if (!issueData) {
+            throw new Error("could not delete");
+          }
+          issueData.remove(); 
+          
+          return projectdata.save();
+        })
+        .then(data => {
+          res.json({ result: "successfully deleted", _id: _id });
+        })
+        .catch(err => {
+          console.error(err);
+          res.json({ error: "could not delete", _id: _id });
+        });
     });
-
-};
+  }    
