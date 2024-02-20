@@ -1,188 +1,124 @@
 'use strict';
 
-const mongoose = require("mongoose");
-//const ObjectId = mongoose.Types.ObjectId; // Agrega esta línea
-const IssueModel = require("../models").Issue;
-const ProjectModel = require("../models").Project;
+const MongoClient = require( 'mongodb' );
+const ObjectId    = require( 'mongodb' ).ObjectID;
+const xssFilters  = require( 'xss-filters' );
 
-module.exports = function (app) {
+const DB_URI   = process.env.DB;
+const ENDPOINT = '/api/issues/:project';
 
-  app.route('/api/issues/:project')
+module.exports = ( app ) => {
 
-    .get(function (req, res) {
-      let projectName = req.params.project;
-      
-      const { 
-        _id,
-        open,
-        issue_title,
-        issue_text,
-        created_by,
-        assigned_to, 
-        status_text, 
-      } = req.query;
-      
-      ProjectModel.aggregate([
-        { $match: {name: projectName}},
-        { $unwind: "$issues" },
-        _id != undefined
-        ? { $match: { "issues._id": ObjectId(_id) } }
-        : { $match: {} },
-        open!= undefined
-        ? { $match: { "issues.open": open } }
-        : { $match: {}},
-        issue_title != undefined
-        ? { $match: { "issues.issue_title": issue_title}} 
-        : { $match: {} },
-        issue_text != undefined
-        ? { $match: { "issues.issue_text": issue_text } } 
-        : { $match: {}},
-        created_by != undefined
-        ? { $match: { "issues.created_by": created_by } } 
-        : { $match: {} },
-        assigned_to != undefined
-        ? { $match: { "issues.assigned_to": assigned_to } }
-        : { $match: {}}, 
-        status_text != undefined
-        ? { $match: { "issues.status_text": status_text } } 
-        : { $match: {}},
-      ]).then((data) => {
-        if (!data) { 
-          res.json([]);
-        } else {
-          let mappedData = data.map((item) => item.issues); 
-          res.json(mappedData);
-        }
-      }).catch((err) => {
-        console.error(err);
-        res.status(500).send("Internal Server Error");
-      });
-    })
+  app.get( ENDPOINT, ( req,res ) => {
+    const project = req.params.project;
+    const query   = req.query;
+    if ( query._id )   query._id  = new ObjectId( query._id );
+    if ( query.open === '' || query.open === 'true' )  query.open = true;
+    else if ( query.open === 'false' )                 query.open = false;
 
-    .post(function (req, res) {
-      let project = req.params.project;
-      const {
-        issue_title,
-        issue_text,
-        created_by,
-        assigned_to,
-        status_text,
-      } = req.body;
-      if (!issue_title || !issue_text || !created_by) {
-        res.json({ error: "required field(s) missing" });
-        return;
+    MongoClient.connect( DB_URI )
+      .then( db => {
+        const collection = db.collection( project );
+        collection.find( query ).sort( { updated_on: -1 } ).toArray( ( error,doc ) => {
+          if ( !error ) res.json( doc );
+          else          res.send( error );
+        } );
+
+      } )
+      .catch( error => {
+        res.send( error ) 
+      } );
+  } )
+
+  app.post( ENDPOINT, ( req,res ) => {
+    const newIssue = {
+      issue_title   : req.body.issue_title,
+      issue_text    : req.body.issue_text,
+      assigned_to   : req.body.assigned_to || '',
+      status_text   : req.body.status_text || '',
+      created_by    : req.body.created_by,
+      open          : true
+    };
+    const project = xssFilters.inHTMLData( req.params.project );
+
+    // Sanitize input data.
+    for ( let input in newIssue ) {
+      if ( input !== 'open' ) {
+        newIssue[ input ] = xssFilters.inHTMLData( newIssue[ input ] );
+        if ( newIssue[ input ] === 'undefined' ) newIssue[ input ] = undefined;
       }
-      const newIssue = new IssueModel({
-        issue_title: issue_title || "",
-        issue_text: issue_text || "",
-        created_on: new Date(),
-        updated_on: new Date(),
-        created_by: created_by || "",
-        assigned_to: assigned_to || "",
-        open: true,
-        status_text: status_text || "",
-      });
+    }
+    newIssue.created_on = Date.now( );
+    newIssue.updated_on = Date.now( );
 
-      ProjectModel.findOne({ name: project })
-        .then(projectdata => {
-          if (!projectdata) {
-            const newProject = new ProjectModel({ name: project });
-            newProject.issues.push(newIssue);
-            return newProject.save();
-          } else {
-            projectdata.issues.push(newIssue);
-            return projectdata.save();
-          }
-        })
-        .then(data => {
-          res.json(newIssue);
-        })
-        .catch(err => {
-          console.error(err);
-          res.status(500).send("Internal Server Error");
-        });
-    })
+    if ( newIssue.issue_title && newIssue.issue_text && newIssue.created_by ) {
+      MongoClient.connect( DB_URI )
+        .then( db => {
+          const collection = db.collection( project );
+          collection.insertOne( newIssue )
+            .then( doc => {
+              newIssue._id = doc.insertedId;
+              res.json( newIssue );
+            } )
+            .catch( error => res.send( error ) );
+        } )
+        .catch( error => res.send( error ) );
+    } else {
+      res.send( 'Sorry, but "issue_title", "issue_text" and "created_by" are all required' );
+    }
+  } );
 
-    .put(function (req, res) {
-      let project = req.params.project;
-      const { 
-        _id,
-        issue_title,
-        issue_text,
-        created_by,
-        assigned_to,
-        status_text,
-        open,
-      } = req.body;
-      if (!_id) {
-        res.json({ error: "missing _id" });
-        return;
-      }
-      if (
-        !issue_title &&
-        !issue_text &&
-        !created_by &&
-        !assigned_to &&
-        !status_text &&
-        !open
-      ) {
-        res.json({ error: "no update field(s) sent", _id: _id });
-        return;
-      }
-      ProjectModel.findOne({ name: project }) // Cambio aquí
-        .then(projectdata => {
-          if (!projectdata) {
-            throw new Error("could not update"); // Cambio aquí
-          }
-          const issueData = projectdata.issues.id(_id);
-          if (!issueData) {
-            throw new Error("could not update"); // Cambio aquí
-          } 
-          issueData.issue_title = issue_title || issueData.issue_title; 
-          issueData.issue_text = issue_text || issueData.issue_text; 
-          issueData.created_by = created_by || issueData.created_by; 
-          issueData.assigned_to= assigned_to || issueData.assigned_to; 
-          issueData.status_text = status_text || issueData.status_text; 
-          issueData.updated_on = new Date();
-          issueData.open = open;
-          return projectdata.save(); // Cambio aquí
-        })
-        .then(data => {
-          res.json({ result: "successfully updated", _id: _id });
-        })
-        .catch(err => {
-          console.error(err);
-          res.status(500).send("Internal Server Error");
-        });
-    })
+  app.put( ENDPOINT, ( req,res ) => {
+    const project     = xssFilters.inHTMLData( req.params.project );
+    const inputs      = req.body;
+    const issueID     = xssFilters.inHTMLData( inputs._id );
 
-    .delete(function (req, res) {
-      let project = req.params.project; 
-      const { _id } = req.body;
-      if (!_id) {
-        res.json({ error: "missing _id" }); 
-        return;
-      }
-      
-      ProjectModel.findOne({ name: project })
-        .then(projectdata => {
-          if (!projectdata) {
-            throw new Error("could not delete");
-          }
-          const issueData = projectdata.issues.id(_id); 
-          if (!issueData) {
-            throw new Error("could not delete");
-          }
-          issueData.remove(); 
-          
-          return projectdata.save();
-        })
-        .then(data => {
-          res.json({ result: "successfully deleted", _id: _id });
-        })
-        .catch(err => {
-          console.error(err);
-          res.json({ error: "could not delete", _id: _id });
-        });
-    });
-  }    
+    delete inputs._id;            // Delete from object to check if all other inputs are empty.
+    for ( let input in inputs ) { // Delete all empty properties and sanitize.
+      if ( !inputs[ input ] && input !== 'open' )
+        delete inputs[ input ];
+      else
+        inputs[ input ] = xssFilters.inHTMLData( inputs[ input ] );
+    }
+
+    if ( Object.keys( inputs ).length > 0 ) {
+      // Assigned here just to meet the user stories.
+      // If assigned before, an empty form could be sent.
+      inputs.open       = !inputs.open;
+      inputs.updated_on = Date.now( );
+
+      MongoClient.connect( DB_URI ) // Connect to DB and update document.
+        .then( db => {
+          const collection = db.collection( project );
+          collection.findAndModify(
+            { _id: new ObjectId( issueID ) },
+            [ [ '_id',1 ] ],
+            { $set: inputs },
+            { new: true } )  // Returns the updated collection.
+              .then( doc => res.send( 'successfully updated' ) )
+              .catch( error => res.send( error ) )
+        } )
+        .catch( error => res.send( error ) );
+    } else {
+      res.send( 'no updated field sent' );
+    }
+  } );
+    
+  app.delete( ENDPOINT, ( req,res ) => {
+    const project = req.params.project;
+    const issueID = req.body._id;
+
+    if ( issueID ) {
+      MongoClient.connect( DB_URI )
+        .then( db => {
+          const collection = db.collection( project );
+          collection.findOneAndDelete( { _id: new ObjectId( issueID ) } )
+            .then( doc => res.send( `deleted ${issueID}` ) )
+            .catch( error => res.send ( `could not delete ${issueID}` ) )
+        } )
+    } else {
+      res.send( '_id error' );
+    }
+  } );
+
+};
