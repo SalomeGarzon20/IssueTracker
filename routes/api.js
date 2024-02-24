@@ -4,7 +4,7 @@ var expect = require('chai').expect;
 let mongodb = require('mongodb')
 let mongoose = require('mongoose')
 
-let uri = 'mongodb+srv://gabriela:Gabriela07@cluster0.amtn6p4.mongodb.net/issue_tracker?retryWrites=true&w=majority&appName=Cluster0'
+let uri = 'mongodb+srv://gabriela:' + process.env.PW + '@cluster0.amtn6p4.mongodb.net/issue_tracker?retryWrites=true&w=majority&appName=Cluster0'
 
 module.exports = function (app) {
   
@@ -46,10 +46,9 @@ module.exports = function (app) {
       })
       newIssue.save((error, savedIssue) => {
         if(!error && savedIssue){
-          console.log('Saved Issue is')
-          console.log(savedIssue)
+          res.json(savedIssue)
         }
-      })      
+      })     
     })
 
     .put(function (req, res){
